@@ -54,6 +54,21 @@ class Foreman::ClientCertificateTest < ActiveSupport::TestCase
     end
   end
 
+  describe '#raw_data' do
+    test 'decodes a URL-escaped PEM certificate without changing base64 plus signs' do
+      assert_includes raw_certificate, '+'
+      request.env['SSL_CLIENT_CERT'] = raw_certificate.gsub(' ', '%20').gsub("\n", '%0A')
+
+      assert_equal raw_certificate, client_certificate.raw_data
+    end
+
+    test 'does not decode arbitrary certificate header content' do
+      request.env['SSL_CLIENT_CERT'] = 'untrusted%20header'
+
+      assert_equal 'untrusted%20header', client_certificate.raw_data
+    end
+  end
+
   describe '#verify' do
     context 'with SSL_CLIENT_VERIFY = SUCCESS' do
       test 'the client certificate is valid' do

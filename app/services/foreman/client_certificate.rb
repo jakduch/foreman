@@ -1,5 +1,9 @@
+require 'uri'
+
 module Foreman
   class ClientCertificate
+    ESCAPED_PEM_PREFIX = '-----BEGIN%20CERTIFICATE-----'.freeze
+
     delegate :logger, to: :Rails
     attr_reader :request
 
@@ -12,7 +16,11 @@ module Foreman
     end
 
     def raw_data
-      request.env[certificate_env_key]
+      data = request.env[certificate_env_key]
+      return data unless data&.start_with?(ESCAPED_PEM_PREFIX)
+
+      decoded = URI::DEFAULT_PARSER.unescape(data)
+      decoded.start_with?('-----BEGIN CERTIFICATE-----') ? decoded : data
     end
 
     def subject
