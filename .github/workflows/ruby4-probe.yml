@@ -102,6 +102,8 @@ jobs:
         run: |
           git fetch origin fix/ubuntu26-postgresql-client
           git checkout FETCH_HEAD -- .github/scripts
+          git fetch origin fix/39913-test-observer
+          git checkout FETCH_HEAD -- bundler.d/test.rb
       - run: echo "$GITHUB_WORKSPACE/.github/scripts/postgresql" >> "$GITHUB_PATH"
       - name: Install build dependencies
         run: |
@@ -123,12 +125,15 @@ jobs:
       - name: Test the wrapper and its style
         run: |
           bundle exec ruby .github/scripts/test_pg_dump.rb
-          bundle exec rubocop .github/scripts/test_pg_dump.rb lib/foreman/logging.rb test/unit/foreman/logging_test.rb
+          bundle exec rubocop .github/scripts/test_pg_dump.rb lib/foreman/logging.rb test/unit/foreman/logging_test.rb bundler.d/test.rb
       - name: Dump and restore the application schema
         run: |
           bin/rake db:create db:migrate
           bin/rake db:test:load_schema
-      - run: bin/rake test TEST=test/unit/foreman/logging_test.rb
+      - name: Run logging regressions with a console test summary
+        run: GITHUB_ACTIONS=false bin/rake test TEST=test/unit/foreman/logging_test.rb
+      - name: Verify test factories can load
+        run: bundle exec ruby -ractive_support -rfactory_bot -e 'puts FactoryBot::VERSION'
       - name: Investigate remaining Ruby 4 unit failures
         if: matrix.ruby == '4.0.7'
         run: bin/rake test:units
