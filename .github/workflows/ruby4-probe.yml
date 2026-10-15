@@ -9,6 +9,34 @@ permissions:
   contents: read
 
 jobs:
+  ldap:
+    if: github.repository == 'jakduch/foreman'
+    name: ldap_fluff Ruby ${{ matrix.ruby }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - ruby: '2.7'
+            os: ubuntu-24.04
+          - ruby: '3.0'
+            os: ubuntu-24.04
+          - ruby: '3.3'
+            os: ubuntu-26.04
+          - ruby: '4.0.7'
+            os: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: jakduch/ldap_fluff
+          ref: feature/ruby-4-support
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby }}
+          bundler-cache: true
+      - run: bundle exec rake MT_KWARGS_HACK=1
+
   probe:
     if: github.repository == 'jakduch/foreman'
     name: Ruby ${{ matrix.ruby }} on ${{ matrix.os }}
@@ -18,10 +46,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - ruby: '3.0'
-            os: ubuntu-24.04
-          - ruby: '3.3'
-            os: ubuntu-26.04
           - ruby: '4.0.7'
             os: ubuntu-26.04
     env:
@@ -50,6 +74,9 @@ jobs:
           ruby --version
           bundle --version
           ruby -ropenssl -e 'puts OpenSSL::OPENSSL_VERSION; puts OpenSSL::OPENSSL_LIBRARY_VERSION'
+      - name: Investigate the LDAP dependency fix
+        run: |
+          printf '\ngem "ldap_fluff", git: "https://github.com/jakduch/ldap_fluff.git", branch: "feature/ruby-4-support"\n' > bundler.d/ruby4-investigation.rb
       - name: Install application dependencies
         run: bundle install --jobs 4 --retry 2
       - name: Prepare database and boot application
