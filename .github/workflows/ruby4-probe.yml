@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   ldap:
-    if: github.repository == 'jakduch/foreman'
+    if: false
     name: ldap_fluff Ruby ${{ matrix.ruby }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
@@ -76,7 +76,7 @@ jobs:
           ruby -ropenssl -e 'puts OpenSSL::OPENSSL_VERSION; puts OpenSSL::OPENSSL_LIBRARY_VERSION'
       - name: Investigate the LDAP dependency fix
         run: |
-          printf '\ngem "ldap_fluff", git: "https://github.com/jakduch/ldap_fluff.git", branch: "feature/ruby-4-support"\n' > bundler.d/ruby4-investigation.rb
+          sed -i "s|^gem 'ldap_fluff'.*|gem 'ldap_fluff', '>= 0.9.0', '< 1.0', git: 'https://github.com/jakduch/ldap_fluff.git', branch: 'feature/ruby-4-support'|" Gemfile
       - name: Install application dependencies
         run: bundle install --jobs 4 --retry 2
       - name: Prepare database and boot application
