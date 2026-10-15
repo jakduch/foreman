@@ -1,0 +1,67 @@
+name: Ruby compatibility investigation
+
+on:
+  push:
+    branches:
+      - ci/ruby-4-compatibility-probe
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    if: github.repository == 'jakduch/foreman'
+    name: Ruby ${{ matrix.ruby }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - ruby: '3.0'
+            os: ubuntu-24.04
+          - ruby: '3.3'
+            os: ubuntu-26.04
+          - ruby: '4.0.7'
+            os: ubuntu-26.04
+    env:
+      RAILS_ENV: test
+      DATABASE_URL: postgresql://postgres:password@localhost/test
+      DATABASE_CLEANER_ALLOW_REMOTE_DATABASE_URL: true
+      BUNDLE_WITHOUT: console:development:journald
+    services:
+      postgres:
+        image: postgres:13
+        ports: ['5432:5432']
+        env:
+          POSTGRES_PASSWORD: password
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libcurl4-openssl-dev zlib1g-dev libpq-dev libvirt-dev libcap-dev
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby }}
+      - name: Record runtime versions
+        run: |
+          ruby --version
+          bundle --version
+          ruby -ropenssl -e 'puts OpenSSL::OPENSSL_VERSION; puts OpenSSL::OPENSSL_LIBRARY_VERSION'
+      - name: Install application dependencies
+        run: bundle install --jobs 4 --retry 2
+      - name: Prepare database and boot application
+        run: bin/rake db:create db:migrate
+      - name: Run unit tests
+        run: bin/rake test:units
+      - name: Upload investigation logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ruby-${{ matrix.ruby }}-investigation
+          path: |
+            Gemfile.lock
+            log/test.log
+          retention-days: 3
