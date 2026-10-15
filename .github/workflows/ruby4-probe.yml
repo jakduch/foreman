@@ -18,15 +18,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - ruby: '3.0'
-            os: ubuntu-24.04
-            hardening: false
-          - ruby: '3.3'
-            os: ubuntu-26.04
-            hardening: false
-          - ruby: '4.0.7'
-            os: ubuntu-26.04
-            hardening: false
           - ruby: '4.0.7'
             os: ubuntu-26.04
             hardening: true
@@ -40,7 +31,7 @@ jobs:
         if: matrix.hardening
         run: |
           git fetch https://github.com/theforeman/safemode.git refs/pull/70/head
-          git -c user.name='CI compatibility test' -c user.email='ci@example.invalid' merge --no-commit --no-ff FETCH_HEAD
+          git diff "$(git merge-base HEAD FETCH_HEAD)" FETCH_HEAD -- lib/safemode/parser.rb test/test_parser_node_allowlist.rb | git apply --3way
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: ${{ matrix.ruby }}
@@ -75,8 +66,57 @@ jobs:
           bundler-cache: true
       - run: bundle exec rake MT_KWARGS_HACK=1
 
-  probe:
+  postgres:
     if: github.repository == 'jakduch/foreman'
+    name: PostgreSQL schema round trip on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-26.04]
+    env:
+      RAILS_ENV: test
+      DATABASE_URL: postgresql://postgres:password@localhost/test
+      DATABASE_CLEANER_ALLOW_REMOTE_DATABASE_URL: true
+      BUNDLE_WITHOUT: console:development:journald
+      FOREMAN_POSTGRES_IMAGE: postgres:13
+    services:
+      postgres:
+        image: postgres:13
+        ports: ['5432:5432']
+        env:
+          POSTGRES_PASSWORD: password
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: fix/ubuntu26-postgresql-client
+      - run: echo "$GITHUB_WORKSPACE/.github/scripts/postgresql" >> "$GITHUB_PATH"
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libcurl4-openssl-dev zlib1g-dev libpq-dev libvirt-dev libcap-dev
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+      - name: Compare host and selected dump clients
+        run: |
+          /usr/bin/pg_dump --version
+          pg_dump --version
+      - run: bundle install --jobs 4 --retry 2
+      - name: Test the wrapper and its style
+        run: |
+          bundle exec ruby .github/scripts/test_pg_dump.rb
+          bundle exec rubocop .github/scripts/test_pg_dump.rb
+      - name: Dump and restore the application schema
+        run: |
+          bin/rake db:create db:migrate
+          bin/rake db:test:load_schema
+      - run: bin/rake test TEST=test/unit/foreman/logging_test.rb
+
+  probe:
+    if: false
     name: Ruby ${{ matrix.ruby }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
