@@ -133,7 +133,7 @@ jobs:
       - name: Run logging regressions with a console test summary
         run: GITHUB_ACTIONS=false bin/rake test TEST=test/unit/foreman/logging_test.rb
       - name: Verify test factories can load
-        run: bundle exec ruby -ractive_support -rfactory_bot -e 'puts FactoryBot::VERSION'
+        run: bundle exec ruby -rlogger -ractive_support -rfactory_bot -e 'puts FactoryBot::VERSION'
       - name: Investigate remaining Ruby 4 unit failures
         if: matrix.ruby == '4.0.7'
         run: bin/rake test:units
