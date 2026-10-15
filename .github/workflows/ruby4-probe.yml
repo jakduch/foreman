@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   safemode:
-    if: github.repository == 'jakduch/foreman'
+    if: false
     name: safemode Ruby ${{ matrix.ruby }} hardening ${{ matrix.hardening }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
@@ -68,13 +68,19 @@ jobs:
 
   postgres:
     if: github.repository == 'jakduch/foreman'
-    name: PostgreSQL schema round trip on ${{ matrix.os }}
+    name: Foreman logging and schema Ruby ${{ matrix.ruby }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, ubuntu-26.04]
+        include:
+          - ruby: '3.0'
+            os: ubuntu-24.04
+          - ruby: '3.3'
+            os: ubuntu-26.04
+          - ruby: '4.0.7'
+            os: ubuntu-26.04
     env:
       RAILS_ENV: test
       DATABASE_URL: postgresql://postgres:password@localhost/test
@@ -91,7 +97,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: fix/ubuntu26-postgresql-client
+          ref: fix/39912-explicit-syslog
+      - name: Include the independent PostgreSQL client fix
+        run: |
+          git fetch origin fix/ubuntu26-postgresql-client
+          git checkout FETCH_HEAD -- .github/scripts
       - run: echo "$GITHUB_WORKSPACE/.github/scripts/postgresql" >> "$GITHUB_PATH"
       - name: Install build dependencies
         run: |
@@ -99,7 +109,12 @@ jobs:
           sudo apt-get install -y build-essential libcurl4-openssl-dev zlib1g-dev libpq-dev libvirt-dev libcap-dev
       - uses: ruby/setup-ruby@v1
         with:
-          ruby-version: '3.3'
+          ruby-version: ${{ matrix.ruby }}
+      - name: Include proposed Ruby 4 dependency prerequisites
+        if: matrix.ruby == '4.0.7'
+        run: |
+          sed -i "s|^gem 'ldap_fluff'.*|gem 'ldap_fluff', '>= 0.9.0', '< 1.0', git: 'https://github.com/jakduch/ldap_fluff.git', branch: 'feature/ruby-4-support'|" Gemfile
+          sed -i "s|^gem 'safemode'.*|gem 'safemode', '>= 2.0', '< 3', git: 'https://github.com/jakduch/safemode.git', branch: 'fix/54-ruby-4'|" Gemfile
       - name: Compare host and selected dump clients
         run: |
           /usr/bin/pg_dump --version
@@ -108,12 +123,15 @@ jobs:
       - name: Test the wrapper and its style
         run: |
           bundle exec ruby .github/scripts/test_pg_dump.rb
-          bundle exec rubocop .github/scripts/test_pg_dump.rb
+          bundle exec rubocop .github/scripts/test_pg_dump.rb lib/foreman/logging.rb test/unit/foreman/logging_test.rb
       - name: Dump and restore the application schema
         run: |
           bin/rake db:create db:migrate
           bin/rake db:test:load_schema
       - run: bin/rake test TEST=test/unit/foreman/logging_test.rb
+      - name: Investigate remaining Ruby 4 unit failures
+        if: matrix.ruby == '4.0.7'
+        run: bin/rake test:units
 
   probe:
     if: false
